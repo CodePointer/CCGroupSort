@@ -6,7 +6,7 @@ from xlsxwriter import Workbook
 
 def read_data(file_name):
 	"""Read file data from xlsx file"""
-	raw_data = read_excel(file_name, sheetname = "RawData")
+	raw_data = read_excel(file_name, sheetname="RawData")
 	key_data = raw_data[["身份", "姓名", "一", "二", "三", "四", "五", "六", "日"]]
 	return raw_data, key_data
 
@@ -14,13 +14,18 @@ def read_data(file_name):
 def add_other_data(raw_data, pro_data):
 	"""Add other information in raw_data into result_data"""
 
-	return pro_data
+	# Add cols in pro_data
+	new_data = raw_data.copy()
+	zero_list = [0] * len(raw_data.index)
+	new_data.insert(0, '组别', zero_list)
+	new_data.insert(0, '冲突', zero_list)
 
+	# Fill the cols
+	for person_idx in raw_data.index:
+		new_data.ix[person_idx, '冲突'] = pro_data.ix[person_idx, '冲突']
+		new_data.ix[person_idx, '组别'] = pro_data.ix[person_idx, '组别']
 
-def ignore_sort(key_data):
-	"""Ignore the information"""
-
-	return key_data
+	return new_data
 
 
 def write_data(file_name, res_data, classify=False):

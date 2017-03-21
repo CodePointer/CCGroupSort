@@ -1,4 +1,9 @@
 # -*- coding: gbk -*-
+# Package:
+#   pandas, xlrd
+#   xlsxwriter
+#   PyQt5
+#   pyinstaller
 
 import sys
 from PyQt5.QtWidgets import (
@@ -103,12 +108,7 @@ class MyExample(QWidget):
             # input
             (raw_data, key_data) = DataProcess.read_data(self._input_edit.text())
             # network flow
-            pro_data = NetworkFlow.main_loop(key_data)
-            # ignore_member
-            if self._ignore_member.isChecked():
-                res_data = DataProcess.ignore_sort(pro_data)
-            else:
-                res_data = pro_data
+            res_data = NetworkFlow.main_loop(key_data, self._ignore_member.isChecked())
             # add other information
             final_data = DataProcess.add_other_data(raw_data, res_data)
             # write data

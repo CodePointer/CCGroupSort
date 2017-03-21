@@ -4,6 +4,7 @@ from math import ceil
 from pandas import DataFrame, Series
 
 MAX_INDEX = 2048
+MAX_STUDENT_NUM = 2048
 
 
 class Node(object):
@@ -20,13 +21,13 @@ class Node(object):
 			self._name = data
 			self._identity = ""
 		else:
-			self._name = data["姓名"]
-			self._identity = data["身份"]
-			self._time = list(data["一":"日"])
-			self._group = -1
+			self._name = data['姓名']
+			self._identity = data['身份']
+			self._time = list(data['一':'日'])
 			for idx in range(0, len(self._time)):
 				if self._time[idx] != 1:
 					self._time[idx] = 0
+			self._group = -1
 		self.edges = {}
 		self.reverse_edges = {}
 
@@ -107,7 +108,7 @@ class Node(object):
 		return self._name
 
 
-def check_time(node1, node2):
+def _check_time(node1, node2):
 	"""Check node's time is good"""
 
 	node1_time = node1.get_time()
@@ -130,7 +131,7 @@ def check_time(node1, node2):
 		return False
 
 
-def deep_first_search(node_list, start_node, terminal_node):
+def _deep_first_search(node_list, start_node, terminal_node):
 	"""dfs to search for augmenting path"""
 
 	# Initialize
@@ -182,7 +183,7 @@ def _my_debug(node_list):
 		print("")
 
 
-def main_loop(pro_data):
+def main_loop(pro_data, ignore_time):
 	"""Main loop of network flow"""
 
 	# 将数据分为教练、学员两类
@@ -205,7 +206,7 @@ def main_loop(pro_data):
 			for idx in node_list.keys():
 				if node_list[idx].get_identity() == "学员":
 					# 如果学员和教练时间匹配
-					match = check_time(node_list[Idx], node_list[idx])
+					match = _check_time(node_list[Idx], node_list[idx])
 					if match:
 						node_list[idx].create_edge(node_list[Idx])
 						possible_student.add(idx)  # 将学员idx加入集合中，统计总人数
@@ -227,7 +228,7 @@ def main_loop(pro_data):
 	# Main loop
 	while True:
 		# DFS
-		(state, trace) = deep_first_search(node_list, source_node, tink_node)
+		(state, trace) = _deep_first_search(node_list, source_node, tink_node)
 		# print("Find a Trace: ",end = "")
 		# print(trace)
 
@@ -255,13 +256,92 @@ def main_loop(pro_data):
 		node_list[idx].search_group(group_table)
 
 	# Output data_frame
-	col = ["冲突", "组别", "身份", "姓名", "周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+	col = ['冲突', '组别', '身份', '姓名', '周一', '周二', '周三', '周四', '周五', '周六', '周日']
 	result_data = DataFrame([], columns=col)
 	for idx in node_list:
-		if node_list[idx].get_identity() != "":
+		if node_list[idx].get_identity() != "": # is student or teacher
 			result_list = [0, node_list[idx].get_group(), node_list[idx].get_identity(), node_list[idx].get_name()] + node_list[idx].get_time()
 			result_series = Series(result_list, index=col)
 			result_data = result_data.append(result_series, ignore_index=True)
+
+	# Divide group anyway
+	if ignore_time:
+		no_group_set = result_data[result_data["组别"] == 0].copy()
+		teacher_set = result_data[result_data['身份'] == '教练'].copy()
+
+		# Add group information in no_group_set
+		for group_idx in range(1, group_cnt):
+			no_group_set[group_idx] = 0.0
+		no_group_set['2_day_match'] = 0.0
+		no_group_set['1_day_match'] = 0.0
+
+		# Check time with teacher_set
+		for person_idx in no_group_set.index:
+			person_time = list(no_group_set.loc[person_idx]['周一':'周日'])
+			day_2_match_num = 0
+			day_1_match_num = 0
+			for group_idx in range(1, group_cnt):
+				teacher_time = list(teacher_set[teacher_set['组别'] == group_idx].iloc[0]['周一':'周日'])
+				match_days = 0
+				for day_idx in range(0, 7):
+					if person_time[day_idx] == 1 and teacher_time[day_idx] == 1:
+						match_days += 1
+				if match_days == 2:
+					day_2_match_num += 1
+				elif match_days == 1:
+					day_1_match_num += 1
+				no_group_set.ix[person_idx, group_idx] = match_days
+			no_group_set.ix[person_idx, '2_day_match'] = day_2_match_num
+			no_group_set.ix[person_idx, '1_day_match'] = day_1_match_num
+		# no_group_set = no_group_set.sort_values(['2_day_match', '1_day_match'], ascending=True)
+
+		# Count student num in every group
+		group_student_num = {}
+		for group_idx in range(1, group_cnt):
+			group_student_num[group_idx] = len(result_data[result_data['组别'] == group_idx])
+		# check 2_day avaliable student
+		set_2_day = no_group_set[no_group_set['2_day_match'] != 0].sort_values(['2_day_match'], ascending=True)
+		for person_idx in set_2_day.index:
+			group_match_val = [0] * (group_cnt - 1)
+			for group_idx in range(1, group_cnt):
+				if no_group_set.loc[person_idx][group_idx] == 2:
+					group_match_val[group_idx - 1] = group_student_num[group_idx]
+				else:
+					group_match_val[group_idx - 1] = MAX_STUDENT_NUM
+			in_group = group_match_val.index(min(group_match_val)) + 1
+			group_student_num[in_group] += 1
+			no_group_set.ix[person_idx, '冲突'] = 0.0
+			no_group_set.ix[person_idx, '组别'] = in_group
+		# check 1_day avaliable student
+		set_1_day = no_group_set[no_group_set['1_day_match'] != 0].sort_values(['1_day_match'], ascending=True)
+		for person_idx in set_1_day.index:
+			group_match_val = [0] * (group_cnt - 1)
+			for group_idx in range(1, group_cnt):
+				if no_group_set.loc[person_idx][group_idx] == 1:
+					group_match_val[group_idx - 1] = group_student_num[group_idx]
+				else:
+					group_match_val[group_idx - 1] = MAX_STUDENT_NUM
+			in_group = group_match_val.index(min(group_match_val)) + 1
+			group_student_num[in_group] += 1
+			no_group_set.ix[person_idx, '冲突'] = 1.0
+			no_group_set.ix[person_idx, '组别'] = in_group
+		# check not avaliable student
+		left_set = no_group_set[no_group_set['组别'] == 0]
+		for person_idx in left_set.index:
+			group_match_val = [0] * (group_cnt - 1)
+			for group_idx in range(1, group_cnt):
+				group_match_val[group_idx - 1] = group_student_num[group_idx]
+			in_group = group_match_val.index(min(group_match_val)) + 1
+			group_student_num[in_group] += 1
+			no_group_set.ix[person_idx, '冲突'] = 2.0
+			no_group_set.ix[person_idx, '组别'] = in_group
+
+		# Add student from no_group_set into result_data
+		for person_idx in no_group_set.index:
+			result_data.ix[person_idx, '冲突'] = no_group_set.loc[person_idx, '冲突']
+			result_data.ix[person_idx, '组别'] = no_group_set.loc[person_idx, '组别']
+
 	result_data = result_data.sort_values(["组别", "身份"], ascending=False)
 
 	return result_data
+
